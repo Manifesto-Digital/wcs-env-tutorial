@@ -50,6 +50,6 @@ TBD
 ### Packer, Provisioners and Ansible
 TBD
 
-### Making the Vagrant Boxes accesible
+### Making the Vagrant Boxes accessible
 TBD
 
