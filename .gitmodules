@@ -1,4 +1,4 @@
 
 [submodule "roles"]
 	path = roles
-	url = git://github.com/Manifesto-Digital/wcs-env-tutorial-ansible-playbooks.git
+	url = https://github.com/Manifesto-Digital/wcs-env-tutorial-ansible-playbooks.git

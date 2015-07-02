@@ -108,18 +108,115 @@ Let’s start by doing something temporary to test our networking setup. From wi
 
 This should install and start an instance of the Apache Web Server which you can validate by opening a web browser of navigating to http://localhost:8080 where you should see the Apache test page. 
 
+Finally lets clean up by destroying our vagrant box
+
+	vagrant destroy
+
 ### Introduction to Ansible
-So now that we have the basis of our Development environment (an OS basically) we need to start installing software in our Vagrant box. To do that we’re using Ansible to write some playbooks. These playbooks include the instructions for installing our software so that we can reuse them again and again. Again you can either checkout the branch that maps to where we are in the process or you can follow along manually.
+So now that we have the basis of our Development environment (an OS basically) we need to start installing software in our Vagrant box. To do that we’re using Ansible to write some playbooks. These playbooks include the instructions for installing our software in a kind of recipe format. Again you can either checkout the branch that maps to where we are in the process or you can follow along manually.
 
 	git checkout 2-intro-to-ansible
 
 The first thing you’ll notice is that we’ve made some changes to our Vagrantfile which now looks like this:
 
+	# -*- mode: ruby -*-
+	# vi: set ft=ruby :
+	
+	# All Vagrant configuration is done below. The "2" in Vagrant.configure
+	# configures the configuration version (we support older styles for
+	# backwards compatibility). Please don't change it unless you know what
+	# you're doing.
+	
+	$script = <<SCRIPT
+	if [ "$(( $(cat /proc/swaps|wc -l) - 1 ))" -eq 1 ]; then
+	sudo mkdir -p /mnt/swap
+	cd /mnt/swap/
+	sudo dd if=/dev/zero of=swapfile bs=1M count=1536 
+	sudo mkswap swapfile 
+	sudo swapon swapfile
+	fi
+	SCRIPT
+	
+	Vagrant.configure(2) do |config|
+	
+	  config.vm.box = "centos-6.6-virtualbox"
+	  config.vm.box_url = "http://opscode-vm-bento.s3.amazonaws.com/vagrant/virtualbox/opscode_centos-6.6_chef-provisionerless.box" 
+	  
+	  config.vm.provider :virtualbox do |vb|
+	    vb.customize ["modifyvm", :id, "--memory", "1024"]
+	  end
+	   
+	  # Application server.
+	  config.vm.define "wcs-server" do |app|
+	    app.vm.hostname = "wcs.192.168.60.5.xip.io"
+	    app.vm.network :private_network, ip: "192.168.60.5"
+	    app.vm.provision "shell", inline: $script
+	    app.vm.network "forwarded_port", guest: 8080, host: 8080, auto_correct: true
+	    app.vm.network "forwarded_port", guest: 1521, host: 1521, auto_correct: true      
+	    app.vm.network "forwarded_port", guest: 9090, host: 9090, auto_correct: true
+	    app.vm.provision "ansible" do |ansible|
+	      ansible.playbook = "wcs.yml"
+	      ansible.inventory_path = "hosts"
+	      ansible.verbose = "extra"
+	      ansible.limit = 'all'      
+	    end
+	  end  
+	  
+	end
+	
 
+There’s quite a bit of change here so let’s take it one bit at a time. 
+
+#### Temporary Horrible swap Hack
+
+To start with we have a a little bit of inline provisioning that looks like this. I won’t spend too much time talking about it as we’re going to remove it later, however it’s here to help us get Oracle XE installed as the DB installer gets a little upset if we don’t have enough swap space in our VM. Don’t worry though we’ll fix things up properly when get to using packer.
+
+	$script = <<SCRIPT
+	if [ "$(( $(cat /proc/swaps|wc -l) - 1 ))" -eq 1 ]; then
+	sudo mkdir -p /mnt/swap
+	cd /mnt/swap/
+	sudo dd if=/dev/zero of=swapfile bs=1M count=1536 
+	sudo mkswap swapfile 
+	sudo swapon swapfile
+	fi
+	SCRIPT
+
+Next we’ve added some extra network configuration to make things a bit easier for our developers. 
+
+Firstly we’ve added some more forwarded ports. These are for making access to the DB a bit easier (1521 and 8080 is now used for the database admin webapp) and we’ve added another new mapping for our application server tomcat (9090).
+
+Secondly we’ve changed the network configuration so that we’re using a local private network and we’ve added a hostname that maps a fqdn to our local ip address. To do this we’re using a service called [http://xip.io]() that provides DNS mapping to any ip address as long as you use their format.
+
+Finally we’ve added in a provisioning block that kicks of our ansible playbooks. The provisioning looks like this:
+
+	  app.vm.provision "ansible" do |ansible|
+	      ansible.playbook = "wcs.yml"
+	      ansible.inventory_path = "hosts"
+	      ansible.verbose = "extra"
+	      ansible.limit = 'all'      
+	  end
+
+Simply it tells vagrant where to find some important ansible files like the main playbook and our inventory.
+
+Our main ansible playbook is called wcs.yml and sits in the main directory. Lets have a quick look at it:
+
+	---
+	# file: wcs.yml
+	- hosts: webservers
+	  sudo: true
+	  roles:
+	    - common
+	    - {role: oracle, tags: ["oracle"]}
+	    - {role: tomcat, tags: ["tomcat"]}
+	    - {role: web-center-sites, tags: ["wcs"]}      
+
+In essence we’re saying we want to run the roles oracle, tomcat and web-center-sites in that order.
 
 
 ### Installing Oracle XE
-To start with we’re going to install Oracle XE. The filesystem layout for our ansible role looks like this:
+To start with we’re going to install Oracle XE. Before we do so we need to place the oracle rpm archive we downloaded right at the beginning and place it within the roles/oracle/files directory.
+
+The filesystem layout for our ansible role should like this:
 
 	- oracle
 	   - files
@@ -146,9 +243,115 @@ This is where we put the files describing the tasks to be performed as part of r
 This where we put our template files. These are files used in the installation that will have host specific values. For example in our case we’re creating a response file (xe.rsp) for the Oracle installer that provides values for the database ports and credentials.
 
 ### Installing Tomcat
-TBD
+The role we’ve created for installing tomcat is very similar in structure and is based on the ansible provided example here - [https://github.com/ansible/ansible-examples/tree/master/tomcat-standalone][9]
+
+	- tomcat
+	   - files
+	       + tomcat-initscript.sh
+	   - tasks
+	       + main.yml
+	   - templates
+	       + server.xml
+	       + tomcat-users.xml
+
+#### Files
+This includes our service script for tomcat. 
+
+#### Handlers
+This directory includes a file called main.yml that describes operations that are run upon notification - a good example, and the one used here is restarting a service when a configuration file changes.
+
+#### Tasks
+Again this main.yml file describes the tasks required to install and configure tomcat. They can be broadly described as:
+
+- Install Java 
+- Download the Tomcat binary
+- Create install directories and SymLinks
+- Create Tomcat users/groups
+- Make sure all directories are owned by the new tomcat user
+- Create the Tomcat server.xml configuration file
+- Create the Tomcat tomcat-users.xml configuration file
+- Put the Tomcat initscript in place
+
+#### Templates
+Our template files here are the server.xml and the tomcat-user.xml file
+
 ### Automating a Web Center Sites Installation
-TBD
+With our database and application server in place the next step is to perform that actual installation of Web Center Sites.
+
+Let’s start by looking at our ansible role - this should all be starting to look familiar to you by now.
+
+	- web-center-sites
+	   - files
+	       + ofm_sites_generic_11.1.1.8.0_disk1_1of1.zip
+	       + ojdbc6.jar
+	   - tasks
+	       + main.yml
+	   - templates
+	       + catalina.properties
+	       + catalina.sh
+	       + create_wcs_user.sql
+	       + customBeans.xml
+	       + generic_omii.ini
+	       + install.ini
+	       + installer.sh
+	       + server.xml
+
+#### Files
+The in this directory are some of the ones we downloaded previously namely the WCS installer archive and the Oracle JDBC driver.
+
+#### Tasks
+Our main.yml tasks file includes the following instructions:
+
+- Install Java
+- Install NetCat (used for running the installer in the background and to be able to pipe input)
+- Create the database setup script
+- Create the database
+- Unzip the WCS installation archive
+- Create directory for the installer to run from
+- Unzip the Sites part of the install suite
+- Create shared directory
+- Create the WCS home directory
+- Move the JDBC driver into the tomcat lib
+- Add WCS parameters to the tomcat startup script (catalina.sh)
+- Create the ini file that drives the silent installer
+- Create the installer configuration file
+- Update the tomcat server.xml file with details of the WCS datasource
+- Update the catalina.properties file to add the WCSHOME/bin directory to the classpath
+- Create the installer.sh silent install wrapper script
+- Execute the installer.sh script
+- Update the customBeans.xml configuration file that controls the urls that WCS trusts access from
+- Restart tomcat_ 
+Which is a whole lot of stuff going on. Of all of it perhaps the most interesting is the installer.sh script (the rest is fairly standard installing WCS fare) so let’s continue by having a look at what that script is doing.
+
+	#!/bin/bash
+	 
+	echo "<<< deploying sites"
+	cd {{wcs_installer_directory}}/Sites
+	rm out.log
+	touch out.log
+	nc -l 12345 | sh csInstall.sh -silent | tee out.log &
+	while ! tail -n 1 out.log | grep "press ENTER."
+	do sleep 1 ; echo ...deploying...
+	done
+	echo ">>> deploying sites"
+	 
+	echo "<<< starting tomcat"
+	/usr/share/tomcat/bin/startup.sh
+	while ! wget -q -O- http://{{wcs_install_webserver_address}}:{{wcs_install_webserver_port}}/cs/HelloCS | grep reason=Success
+	do echo "...starting..." ; sleep 1
+	done
+	echo ">>> started tomcat"
+	 
+	echo "<<< installing sites"
+	cd {{wcs_installer_directory}}/Sites
+	echo | nc localhost 12345
+	while ! tail -n 1 out.log | grep "Installation Finished Successfully"
+	do sleep 1 ; echo ...installing...
+	done
+	echo ">>> installed sites" 
+
+Of interest here is the use of NetCat to provide a way of running the installer that allows us to send an ‘Enter’ command to the installer process once we’ve checked that the web application has deployed correctly.
+
 ### Introduction to Packer
 TBD
 ### Packer, Provisioners and Ansible
@@ -164,3 +367,4 @@ TBD
 [5]:	http://www.oracle.com/technetwork/database/database-technologies/express-edition/downloads/index.html
 [6]:	http://www.oracle.com/technetwork/apps-tech/jdbc-112010-090769.html
 [7]:	https://github.com/chef/bento
+[9]:	https://github.com/ansible/ansible-examples/tree/master/tomcat-standalone
