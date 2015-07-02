@@ -1,0 +1,10 @@
+---
+# file: wcs.yml
+- hosts: webservers
+  sudo: true
+  roles:
+    - common
+    - {role: oracle, tags: ["oracle"]}
+    - {role: tomcat, tags: ["tomcat"]}
+    - web-center-sites    
+

@@ -109,9 +109,42 @@ Let’s start by doing something temporary to test our networking setup. From wi
 This should install and start an instance of the Apache Web Server which you can validate by opening a web browser of navigating to http://localhost:8080 where you should see the Apache test page. 
 
 ### Introduction to Ansible
-TBD
+So now that we have the basis of our Development environment (an OS basically) we need to start installing software in our Vagrant box. To do that we’re using Ansible to write some playbooks. These playbooks include the instructions for installing our software so that we can reuse them again and again. Again you can either checkout the branch that maps to where we are in the process or you can follow along manually.
+
+	git checkout 2-intro-to-ansible
+
+The first thing you’ll notice is that we’ve made some changes to our Vagrantfile which now looks like this:
+
+
+
+
 ### Installing Oracle XE
-TBD
+To start with we’re going to install Oracle XE. The filesystem layout for our ansible role looks like this:
+
+	- oracle
+	   - files
+	       + oracle-xe-11.2.0-1.0.x86_64.rpm.zip
+	   - tasks
+	       + main.yml
+	   - templates
+	       + xe.rsp
+
+#### Files
+This is where we put the Zip archive that contains the Linux RPM for installing Oracle. 
+
+#### Tasks
+This is where we put the files describing the tasks to be performed as part of running this playbook. It’s the meat if you like. If you have a look at this main.yml task file you can see it’s fairly simple. Breaking it down we do the following:
+
+- Install some required packages using yum
+- Unzip the archive containing the RPM
+- Install the RPM
+- Create the response file used as part of the post install configuration
+- Run the post install configuration
+- Add the oracle env variables to the vagrant users bash profile 
+
+#### Templates
+This where we put our template files. These are files used in the installation that will have host specific values. For example in our case we’re creating a response file (xe.rsp) for the Oracle installer that provides values for the database ports and credentials.
+
 ### Installing Tomcat
 TBD
 ### Automating a Web Center Sites Installation

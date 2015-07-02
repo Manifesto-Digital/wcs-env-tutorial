@@ -1,0 +1,53 @@
+# Here are variables related to the Tomcat installation
+
+tomcat_version: 7.0.62
+tomcat_download_url: "http://mirrors.ukfast.co.uk/sites/ftp.apache.org/tomcat/tomcat-7/v{{ tomcat_version }}/bin/apache-tomcat-{{ tomcat_version }}.tar.gz"
+
+http_port: 9090
+https_port: 8443
+
+# This will configure a default manager-gui user:
+
+admin_username: admin
+admin_password: adminsecret
+
+# Here are variables related to the oracle installation
+
+oracle_http_port: 8080
+oracle_db_port: 1521
+
+# This is the password for SYS user 
+oracle_password: manager
+
+# Here are the variables related to the Web Center Sites installation
+
+wcs_database_user: csuser
+wcs_database_password: csuser
+wcs_database_host: localhost
+wcs_database_sid: XE
+
+wcs_installer_directory: /opt/oracle/install
+
+wcs_install_directory: /opt/oracle/wcs
+wcs_install_app_server_type: tomcat5
+wcs_install_type: single
+wcs_install_webserver_address: localhost
+wcs_install_webserver_port: 9090
+
+wcs_install_avisports_site: false
+wcs_install_engage: true
+
+wcs_install_fsii: false
+wcs_install_samples: false
+
+wcs_shared_directory: /mnt/wcs-shared
+app_server_path: /usr/share/tomcat
+database_type: Oracle10
+wcs_datasource: csDataSource
+wcs_context_path: /cs/
+
+cas_host_name: wcs.192.168.60.5.xip.io
+cas_port_number: 9090
+cas_host_name_local: localhost
+cas_port_number_local: 9090
+cas_host_name_actual: localhost

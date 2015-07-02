@@ -19,7 +19,17 @@ Vagrant.configure(2) do |config|
    
   # Application server.
   config.vm.define "wcs-server" do |app|
-    app.vm.network "forwarded_port", guest: 80, host: 8080, auto_correct: true
-  end    
+    app.vm.hostname = "wcs.192.168.60.5.xip.io"
+    app.vm.network :private_network, ip: "192.168.60.5"
+    app.vm.network "forwarded_port", guest: 8080, host: 8080, auto_correct: true
+    app.vm.network "forwarded_port", guest: 1521, host: 1521, auto_correct: true      
+    app.vm.network "forwarded_port", guest: 9090, host: 9090, auto_correct: true
+    app.vm.provision "ansible" do |ansible|
+      ansible.playbook = "wcs.yml"
+      ansible.inventory_path = "hosts"
+      ansible.verbose = "extra"
+      ansible.limit = 'all'      
+    end
+  end  
   
 end
