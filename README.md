@@ -19,7 +19,7 @@ Finally we’ll use a tool called packer.io to create machine images that make i
 Before we get going it’s worth talking a little about why we would want to do any of these things. I mean this setup takes a little bit of work so let’s start with a business case of sorts.
 
 - **Reducing the capacity for surprise**  
-	Let me start with a question: How many times as a developer have you deployed code into a test environment only for it to fail because the test environment is configured differently in some way? - perhaps a different database, or a different version of the application server? perhaps even a different patch version of Web Center Sites. Even worse, how many time has that happened in production?   
+	Let me start with a question: How many times as a developer have you deployed code into a test environment only for it to fail because the test environment is configured differently in some way? - perhaps a different database, or a different version of the application server? perhaps even a different patch version of Web Center Sites. Even worse, how many time has that happened in production?  
 	We can mitigate the risk of these sorts of problems by trying to make our development and test environments as ‘Production Like’ as possible, this means the same OS, the same versions of supporting applications configured in the same way. We should also be able to deploy our code in the same kind of way as we do in production so we know better, how that process is going to behave.
 
 - **Avoiding drift**
@@ -72,16 +72,15 @@ The following code block shows what your Vagrantfile should look like at this po
 	
 	  config.vm.box = "opscode_centos-6.6"
 	  config.vm.box_url = "http://opscode-vm-bento.s3.amazonaws.com/vagrant/virtualbox/opscode_centos-6.6_chef-provisionerless.box" 
-	  
+	
 	  config.vm.provider :virtualbox do |vb|
 	vb.customize ["modifyvm", :id, "--memory", "1024"]
 	  end
-	   
+	
 	  # Application server.
 	  config.vm.define "wcs-server" do |app|
 	    app.vm.network "forwarded_port", guest: 80, host: 8080, auto_correct: true
 	  end    
-	  
 	end
 
 Most of this is fairly vanilla but it’s worth pointing out a couple of things. 
@@ -141,11 +140,11 @@ The first thing you’ll notice is that we’ve made some changes to our Vagrant
 	
 	  config.vm.box = "centos-6.6-virtualbox"
 	  config.vm.box_url = "http://opscode-vm-bento.s3.amazonaws.com/vagrant/virtualbox/opscode_centos-6.6_chef-provisionerless.box" 
-	  
+	
 	  config.vm.provider :virtualbox do |vb|
 	    vb.customize ["modifyvm", :id, "--memory", "1024"]
 	  end
-	   
+	
 	  # Application server.
 	  config.vm.define "wcs-server" do |app|
 	    app.vm.hostname = "wcs.192.168.60.5.xip.io"
@@ -161,9 +160,8 @@ The first thing you’ll notice is that we’ve made some changes to our Vagrant
 	      ansible.limit = 'all'      
 	    end
 	  end  
-	  
 	end
-	
+ 
 
 There’s quite a bit of change here so let’s take it one bit at a time. 
 
@@ -320,11 +318,11 @@ Our main.yml tasks file includes the following instructions:
 - Create the installer.sh silent install wrapper script
 - Execute the installer.sh script
 - Update the customBeans.xml configuration file that controls the urls that WCS trusts access from
-- Restart tomcat_ 
+- Restart tomcat\_ 
 Which is a whole lot of stuff going on. Of all of it perhaps the most interesting is the installer.sh script (the rest is fairly standard installing WCS fare) so let’s continue by having a look at what that script is doing.
 
 	#!/bin/bash
-	 
+	
 	echo "<<< deploying sites"
 	cd {{wcs_installer_directory}}/Sites
 	rm out.log
@@ -334,14 +332,14 @@ Which is a whole lot of stuff going on. Of all of it perhaps the most interestin
 	do sleep 1 ; echo ...deploying...
 	done
 	echo ">>> deploying sites"
-	 
+	
 	echo "<<< starting tomcat"
 	/usr/share/tomcat/bin/startup.sh
 	while ! wget -q -O- http://{{wcs_install_webserver_address}}:{{wcs_install_webserver_port}}/cs/HelloCS | grep reason=Success
 	do echo "...starting..." ; sleep 1
 	done
 	echo ">>> started tomcat"
-	 
+	
 	echo "<<< installing sites"
 	cd {{wcs_installer_directory}}/Sites
 	echo | nc localhost 12345
@@ -353,12 +351,158 @@ Which is a whole lot of stuff going on. Of all of it perhaps the most interestin
 Of interest here is the use of NetCat to provide a way of running the installer that allows us to send an ‘Enter’ command to the installer process once we’ve checked that the web application has deployed correctly.
 
 ### Introduction to Packer
-TBD
-### Packer, Provisioners and Ansible
-TBD
+So now we have our recipes for automating installation and configuration but we still have a few problems to solve. 
+The first is that all of this takes a little while to complete. 
+If we want our developers to be able to recreate their development environments as easily as possible, we also need them to be able to do so as quickly as possible and at the moment that’s not really the case. We also have a little hack in our vagrant file that I promised we would remove. We can solve both of these problems by using a tool called packer. 
 
-### Making the Vagrant Boxes accessible
-TBD
+I like to think of packer as a golden master producer, it gives you the ability to “create machine and container images for multiple platforms from a single source of configuration.”
+
+In practice this means we can use packer to create our development environments as self contained vagrant boxes (as in boxes with all the provisioning already completed). Which is fine although it’s worth noting that we could just do this with Vagrant itself. However it’s real value comes with being able to build for multiple platforms and containers - imagine being able to take our development environment and create it as an ami for running on Amazon Web Services or as a VMWare VM for deploying into VSphere or even as a docker container. Imagine being able to create all of our environments from dev all the way through to production from the same version controlled configuration! Exciting stuff indeed.
+
+In the mean time it also means that we can fix our issue with swap space and the oracle xe installer when we create the our initial virtual machine and as a side effect remove our dependency on the bento virtual box.
+
+First off we’ll start by looking at how packer works and once we’ve configured the build of our VM we’ll look at adding some ansible provisioning to automate the install of Web Center Sites and all it’s associated software.
+
+You can have a look at our sample packer project by cloning it from here
+
+	git clone https://github.com/Manifesto-Digital/wcs-env-tutorial-packer-templates.git
+
+#### Layout of packer project
+
+	+ wcs-centos-6.6-x86_64.json
+	- ansible
+	  + hosts
+	  + wcs.yml
+	  - group_vars
+	  - roles
+	- http
+	  - centos-6.6
+	    + ks.cfg
+	- scripts
+	  - centos
+	    + cleanup.sh
+	    + fix-slow-dns.sh
+	  - common
+	    + ansible.sh
+	    + minimize.sh
+	    + shutdown.sh
+	    + sshd.sh
+	    + sudoers
+	    + vagrant.sh
+	    + vmtools.sh
+	- vagrantfile_templates
+	  + macosx.rb
+
+The most important file in this list is wcs-centos-6.6-x86_64.json.
+It’s the main packer configuration file and describes the how and what that we’re going to build. Let’s have a look in a little more detail.
+
+At the top level we have the following objects
+
+- builders
+- post-processors
+- provisioners
+- variables
+
+#### Builders
+A builder in packer is responsible for creating the machines and generating images from them for the platforms we’re targeting (in our case that’s just VirtualBox for now)
+
+#### Provisioners
+This section contains the list of all the provisioners that will be run as part of the creation of a machine image. In our case we’re going to plugin the ansible playbook and roles that we’ve already developed. 
+
+#### Post Processors
+Post processors describe any tasks that need to be performed on machine images once the building and provisioning is complete. In our scenario we’re only using one that creates us our vagrant box - however this would be the place to configure things like pushing a docker build to a registry.
+
+#### Variables
+Variables holds any user defined variables we need to use as part of our build.
+
+### Packer, Provisioners and Ansible
+Before we run our packer build we should talk a little bit about what we need to do to get our ansible playbook running as a provisioner in packer.
+
+The following section from our configuration is the pertinent part, it describes two things, firstly installing ansible in our   local environment and secondly running the packer provided ansible provisioner. 
+
+	   {
+	      "type": "shell",
+	      "execute_command": "echo 'vagrant' | {{.Vars}} sudo -S -E bash '{{.Path}}'",
+	      "script": "scripts/common/ansible.sh"
+	    },
+	    {
+	      "type": "ansible-local",
+	      "playbook_file": "ansible/wcs.yml",
+	      "group_vars": "ansible/group_vars",
+	      "inventory_file": "ansible/hosts",
+	      "role_paths": [
+	        "ansible/roles/common",
+	        "ansible/roles/oracle",
+	        "ansible/roles/tomcat",
+	        "ansible/roles/web-center-sites"                
+	      ]
+	    },  
+
+In order to install ansible we’ve written a short shell script that looks like this
+
+	#!/bin/bash -eux
+	
+	# Install EPEL repository.
+	rpm -ivh http://dl.fedoraproject.org/pub/epel/6/x86_64/epel-release-6-8.noarch.rpm
+	
+	# Install Ansible.
+	yum -y install ansible
+
+We then pass some configuration to the ansible provisioner about where our roles are in our packer project filesystem, where our inventory file is, where our group variables are and finally where our main playbook file is. The playbooks are exactly the same as the ones we used when we’re working with Vagrant directly.
+
+Now is the time (finally) to run packer - assuming of course that you haven’t already ;)
+
+	packer build wcs-centos-6.6-x86_64.json
+
+You should see a whole series of things start to happen on your machine now - packer will start by downloading the Centos installer DVD iso (this can take a while), then it will run an unattended installation and finally provision the image and then create a Vagrant box. Once all of this is finished we can add the newly minted Vagrant box to Vagrant using this command
+
+	vagrant box add wcs-centos-6.6 builds/wcs-centos-6.6.virtualbox.box
+
+### Testing our new Vagrant Box
+
+Now to test we can update our Vagrantfile to look a bit more like this:
+
+	# -*- mode: ruby -*-
+	# vi: set ft=ruby :
+	
+	# All Vagrant configuration is done below. The "2" in Vagrant.configure
+	# configures the configuration version (we support older styles for
+	# backwards compatibility). Please don't change it unless you know what
+	# you're doing.
+	
+	Vagrant.configure(2) do |config|
+	
+	  config.vm.box = "wcs-centos-6.6"
+	
+	  # Application server.
+	  config.vm.define "wcs-server" do |app|
+	    app.vm.hostname = "wcs.192.168.60.5.xip.io"
+	    app.vm.network :private_network, ip: "192.168.60.5"
+	    app.vm.network "forwarded_port", guest: 8080, host: 8080, auto_correct: true
+	    app.vm.network "forwarded_port", guest: 1521, host: 1521, auto_correct: true      
+	    app.vm.network "forwarded_port", guest: 9090, host: 9090, auto_correct: true
+	  end  
+	end
+	
+
+This Vagrantfile is now using our newly created box and although we’re still specifying our networking we’ve removed all of the provisioning as it’s not needed. To start it all up run…
+
+	vagrant up
+
+… and you should be able to browse to [http://wcs.192.168.60.5.xip.io:9090/cs/][10] and log in to WCS using the standard fwadmin credentials.
+
+
+### Next steps
+Now that you’ve automated the creation of your WCS development environments there are a number of directions you could pursue to take things further.
+
+#### Making the Vagrant Boxes Accessible
+Vagrant can download boxes from Urls so perhaps make it easier for colleagues to get hold of box updates by placing your box on a web server for easier distribution.  
+
+#### Creating other types of machine images
+One of the big benefits of packer is the ability to create multiple machine image formats from one configuration file - how about creating a docker image for your WCS development environments as well?
+
+Let me know how you get on.
+
 
 [1]:	https://www.virtualbox.org/wiki/Downloads
 [2]:	http://www.vagrantup.com/downloads
@@ -368,3 +512,4 @@ TBD
 [6]:	http://www.oracle.com/technetwork/apps-tech/jdbc-112010-090769.html
 [7]:	https://github.com/chef/bento
 [9]:	https://github.com/ansible/ansible-examples/tree/master/tomcat-standalone
+[10]:	http://wcs.192.168.60.5.xip.io:9090/cs/
