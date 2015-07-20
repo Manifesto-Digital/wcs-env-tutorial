@@ -1,6 +1,6 @@
 # Here are variables related to the Tomcat installation
 
-tomcat_version: 7.0.62
+tomcat_version: 7.0.63
 tomcat_download_url: "http://mirrors.ukfast.co.uk/sites/ftp.apache.org/tomcat/tomcat-7/v{{ tomcat_version }}/bin/apache-tomcat-{{ tomcat_version }}.tar.gz"
 
 http_port: 9090
@@ -23,7 +23,7 @@ oracle_password: manager
 
 wcs_database_user: csuser
 wcs_database_password: csuser
-wcs_database_host: localhost
+wcs_database_host: 192.168.60.5
 wcs_database_sid: XE
 
 wcs_installer_directory: /opt/oracle/install

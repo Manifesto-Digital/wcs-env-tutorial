@@ -321,6 +321,7 @@ Our main.yml tasks file includes the following instructions:
 - Restart tomcat\_ 
 Which is a whole lot of stuff going on. Of all of it perhaps the most interesting is the installer.sh script (the rest is fairly standard installing WCS fare) so let’s continue by having a look at what that script is doing.
 
+
 	#!/bin/bash
 	
 	echo "<<< deploying sites"
@@ -347,6 +348,7 @@ Which is a whole lot of stuff going on. Of all of it perhaps the most interestin
 	do sleep 1 ; echo ...installing...
 	done
 	echo ">>> installed sites" 
+
 
 Of interest here is the use of NetCat to provide a way of running the installer that allows us to send an ‘Enter’ command to the installer process once we’ve checked that the web application has deployed correctly.
 
