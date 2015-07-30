@@ -1,4 +1,3 @@
----
 # file: wcs.yml
 - hosts: webservers
   sudo: true
